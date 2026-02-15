@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/app/actions/auth'
 import { runSync, refreshAndRevalidate } from '@/app/actions/sync'
 import { signOut } from '@/app/actions/auth'
+import { getFilteredProjects } from '@/lib/permissions/data'
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
@@ -57,10 +58,7 @@ export default async function DashboardPage() {
     )
   }
 
-  const { data: projects } = await supabase
-    .from('notion_sync_cache')
-    .select('contact_notion_id, notion_page_id, contact_type, properties_json')
-    .order('last_synced_at', { ascending: false })
+  const projects = await getFilteredProjects(supabase)
 
   return (
     <div className="bg-white shadow rounded-lg p-6">
@@ -90,7 +88,7 @@ export default async function DashboardPage() {
         ) : (
           <ul className="divide-y divide-gray-200">
             {projects.map((p) => {
-              const props = (p.properties_json || {}) as Record<string, unknown>
+              const props = p.properties
               const title =
                 (props.adres1 as string) ||
                 (props.status as string) ||
@@ -112,6 +110,31 @@ export default async function DashboardPage() {
                         {p.contact_type}
                       </span>
                     </div>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-600 space-y-1">
+                    {Object.entries(props)
+                      .filter(([, v]) => v != null && v !== '')
+                      .map(([k, v]) => (
+                        <div key={k}>
+                          <span className="font-medium capitalize">
+                            {k.replace(/([A-Z])/g, ' $1').trim()}:
+                          </span>{' '}
+                          {k === 'meeting' && typeof v === 'string' && v.startsWith('http') ? (
+                            <a
+                              href={v}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              Open Meeting
+                            </a>
+                          ) : typeof v === 'boolean' ? (
+                            v ? 'Yes' : 'No'
+                          ) : (
+                            String(v)
+                          )}
+                        </div>
+                      ))}
                   </div>
                 </li>
               )
