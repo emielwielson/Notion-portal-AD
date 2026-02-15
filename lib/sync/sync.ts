@@ -20,6 +20,12 @@ import { normalizeNotionId } from '@/lib/utils/notion-id'
 import type { EntityType } from '@/types/database'
 
 const PROJECT_PROPERTY_NAMES = [
+  'Naam',
+  'Name',
+  'title',
+  'Title',
+  'Project',
+  'Projectnaam',
   'Status',
   'Adres 1',
   'Adres 2',
@@ -63,6 +69,12 @@ function extractProjectIdsFromPage(
 }
 
 const PROP_NAME_TO_KEY: Record<string, keyof ProjectPropertyIds> = {
+  Naam: 'title',
+  Name: 'title',
+  title: 'title',
+  Title: 'title',
+  Project: 'title',
+  Projectnaam: 'title',
   Status: 'status',
   'Adres 1': 'adres1',
   'Adres 2': 'adres2',
@@ -72,13 +84,27 @@ const PROP_NAME_TO_KEY: Record<string, keyof ProjectPropertyIds> = {
   'Factuur betaald': 'factuurBetaald',
 }
 
-async function resolveProjectPropertyIds(projectDbId: string): Promise<ProjectPropertyIds> {
+async function resolveProjectPropertyIds(
+  projectDbId: string,
+  projectTitlePropertyName?: string
+): Promise<ProjectPropertyIds> {
   const ids: ProjectPropertyIds = {}
-  for (const name of PROJECT_PROPERTY_NAMES) {
+  const titleNames = [
+    ...(projectTitlePropertyName ? [projectTitlePropertyName] : []),
+    ...PROJECT_PROPERTY_NAMES,
+  ]
+  const seenKeys = new Set<string>()
+  for (const name of titleNames) {
     const id = await getPropertyIdByName(projectDbId, name)
     if (id) {
-      const key = PROP_NAME_TO_KEY[name]
-      if (key) ids[key] = id
+      const key =
+        name === projectTitlePropertyName
+          ? 'title'
+          : PROP_NAME_TO_KEY[name as keyof typeof PROP_NAME_TO_KEY]
+      if (key && !seenKeys.has(key)) {
+        ids[key as keyof ProjectPropertyIds] = id
+        seenKeys.add(key)
+      }
     }
   }
   return ids
@@ -119,7 +145,7 @@ export async function getProjectSyncDiagnostic(userId: string): Promise<ProjectS
     if (!links?.length) return empty
 
     const getProjectenPropertyId = async (dbId: string) => {
-      for (const name of [config.projectenPropertyName, 'Projecten', 'projecten']) {
+      for (const name of [config.projectenPropertyName, 'Projecten', 'projecten', 'Project', 'project']) {
         const id = await getPropertyIdByName(dbId, name)
         if (id) return id
       }
@@ -214,6 +240,8 @@ export async function syncProjects(
       config.projectenPropertyName,
       'projecten',
       'Projecten',
+      'Project',
+      'project',
       'Projects',
     ]
     const getProjectenPropertyId = async (dbId: string) => {
@@ -275,15 +303,24 @@ export async function syncProjects(
       return { success: true, projectsSynced: 0 }
     }
 
+    const BATCH_SIZE = 5
     const projectPages: NotionPage[] = []
-    for (const pid of uniqueProjectIds) {
-      try {
-        const p = await getPage(pid)
-        projectPages.push(p)
-      } catch (e) {
-        console.warn('[Sync] Failed to fetch project page:', pid, e)
+    for (let i = 0; i < uniqueProjectIds.length; i += BATCH_SIZE) {
+      const batch = uniqueProjectIds.slice(i, i + BATCH_SIZE)
+      const results = await Promise.all(
+        batch.map(async (pid) => {
+          try {
+            return await getPage(pid)
+          } catch (e) {
+            console.warn('[Sync] Failed to fetch project page:', pid, e)
+            return null
+          }
+        })
+      )
+      projectPages.push(...results.filter((p): p is NotionPage => p != null))
+      if (i + BATCH_SIZE < uniqueProjectIds.length) {
+        await new Promise((r) => setTimeout(r, 150))
       }
-      await new Promise((r) => setTimeout(r, 200))
     }
 
     let projectDbId: string | null = null
@@ -296,7 +333,7 @@ export async function syncProjects(
     }
 
     const propertyIds: ProjectPropertyIds = projectDbId
-      ? await resolveProjectPropertyIds(projectDbId)
+      ? await resolveProjectPropertyIds(projectDbId, config.projectTitlePropertyName)
       : {}
 
     let count = 0

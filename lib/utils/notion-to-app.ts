@@ -8,6 +8,7 @@ export type AppProject = {
   notionPageId: string
   contactNotionId: string
   contactType: 'customer' | 'contractor'
+  title?: string
   status?: string
   adres1?: string
   adres2?: string
@@ -22,6 +23,7 @@ export type AppProject = {
  * Resolved from project database schema.
  */
 export type ProjectPropertyIds = {
+  title?: string | null
   status?: string | null
   adres1?: string | null
   adres2?: string | null
@@ -31,18 +33,35 @@ export type ProjectPropertyIds = {
   factuurBetaald?: string | null
 }
 
+function extractTextFromRichTextArray(arr: unknown): string {
+  if (!Array.isArray(arr)) return ''
+  return arr
+    .map((t: unknown) => {
+      if (!t || typeof t !== 'object') return ''
+      const o = t as Record<string, unknown>
+      if (typeof o.plain_text === 'string') return o.plain_text
+      if (o.text && typeof o.text === 'object') {
+        const content = (o.text as { content?: string }).content
+        if (typeof content === 'string') return content
+      }
+      if (typeof o.content === 'string') return o.content
+      return ''
+    })
+    .join(' ')
+    .trim()
+}
+
 function extractStringFromProperty(prop: NotionProperty | Record<string, unknown> | undefined): string | undefined {
   if (!prop || typeof prop !== 'object') return undefined
   const p = prop as Record<string, unknown>
+  if (Array.isArray(p.title)) return extractTextFromRichTextArray(p.title) || undefined
   switch (p.type) {
     case 'title':
-      return Array.isArray(p.title)
-        ? (p.title as { plain_text?: string }[]).map((t) => t.plain_text ?? '').join(' ').trim() || undefined
-        : undefined
+      if (Array.isArray(p.title)) return extractTextFromRichTextArray(p.title) || undefined
+      return undefined
     case 'rich_text':
-      return Array.isArray(p.rich_text)
-        ? (p.rich_text as { plain_text?: string }[]).map((t) => t.plain_text ?? '').join(' ').trim() || undefined
-        : undefined
+      if (Array.isArray(p.rich_text)) return extractTextFromRichTextArray(p.rich_text) || undefined
+      return undefined
     case 'select':
       return (p.select as { name?: string })?.name ?? undefined
     case 'status':
@@ -101,6 +120,16 @@ function getByKeyOrName(props: Record<string, unknown>, keysToTry: string[]): un
   return undefined
 }
 
+/** Find first property of given type (e.g. 'title' for database page names) */
+function findPropByType(props: Record<string, unknown>, type: string): unknown {
+  for (const val of Object.values(props)) {
+    if (val && typeof val === 'object' && (val as Record<string, unknown>).type === type) {
+      return val
+    }
+  }
+  return undefined
+}
+
 /**
  * Normalize a Notion project page to AppProject.
  * Uses propertyIds to look up values (resolved from project database schema).
@@ -119,6 +148,29 @@ export function notionToAppProject(
     notionPageId: notionPage.id,
     contactNotionId,
     contactType,
+  }
+
+  // Notion API returns properties keyed by name (e.g. "Naam"), not ID – try name first
+  const titleProp =
+    getByKeyOrName(props, ['Naam', 'Name', 'title', 'Title', 'Project']) ??
+    (process.env.PROJECT_TITLE_PROPERTY_ID && get(process.env.PROJECT_TITLE_PROPERTY_ID.trim())) ??
+    get(propertyIds.title) ??
+    findPropByType(props, 'title')
+  result.title = extractStringFromProperty(titleProp as NotionProperty)
+
+  if (!result.title) {
+    for (const val of Object.values(props)) {
+      if (val && typeof val === 'object') {
+        const v = val as Record<string, unknown>
+        if (Array.isArray(v.title)) {
+          const t = extractTextFromRichTextArray(v.title)
+          if (t) {
+            result.title = t
+            break
+          }
+        }
+      }
+    }
   }
 
   result.status =
@@ -164,6 +216,7 @@ export function notionToAppProject(
  */
 export function appProjectToPropertiesJson(project: AppProject): Record<string, unknown> {
   const out: Record<string, unknown> = {}
+  if (project.title != null) out.title = project.title
   if (project.status != null) out.status = project.status
   if (project.adres1 != null) out.adres1 = project.adres1
   if (project.adres2 != null) out.adres2 = project.adres2

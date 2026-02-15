@@ -3,8 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/app/actions/auth'
 import { runSync, refreshAndRevalidate } from '@/app/actions/sync'
 import { signOut } from '@/app/actions/auth'
-import { getFilteredProjects } from '@/lib/permissions/data'
-import { ProjectTable } from '@/app/components/dashboard/ProjectTable'
+import { getUniqueProjects, hasFreshCache } from '@/lib/permissions/data'
+import { ProjectList } from '@/app/components/dashboard/ProjectList'
 import { getAccessDiagnostics } from '@/lib/entity-resolver/email-to-entity'
 import { getProjectSyncDiagnostic } from '@/lib/sync/sync'
 
@@ -31,9 +31,20 @@ export default async function DashboardPage() {
     )
   }
 
-  await runSync()
-
   const supabase = await createClient()
+  const { data: linksPre } = await supabase
+    .from('user_entity_link')
+    .select('entity_type, entity_notion_id')
+    .eq('user_id', user.id)
+
+  const shouldSync =
+    !linksPre?.length || !(await hasFreshCache(supabase))
+  const syncResult = shouldSync ? await runSync() : { success: true }
+
+  const isNotionAccessError =
+    syncResult.error?.includes('object_not_found') ||
+    syncResult.error?.toLowerCase().includes('shared with your integration')
+
   const { data: links } = await supabase
     .from('user_entity_link')
     .select('entity_type, entity_notion_id')
@@ -46,6 +57,17 @@ export default async function DashboardPage() {
 
     return (
       <div className="bg-white shadow rounded-lg p-6">
+        {isNotionAccessError && (
+          <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200">
+            <h3 className="font-semibold text-amber-900 mb-2">Notion integration access required</h3>
+            <p className="text-sm text-amber-800 mb-2">
+              The Contacten or Contacten (pro) database is not shared with your Notion integration.
+              In Notion: open the database → <strong>•••</strong> → <strong>Add connections</strong> → select your
+              integration.
+            </p>
+            <p className="text-xs text-amber-700">Error: {syncResult.error}</p>
+          </div>
+        )}
         <h2 className="text-xl font-bold text-gray-900 mb-4">No Access</h2>
         <p className="text-gray-600 mb-2">
           Your email ({user.email}) is not linked to any Customer or Contractor
@@ -100,20 +122,31 @@ user_entity_link: ${diag.userEntityLinkCount} rows`}
     )
   }
 
-  const projects = await getFilteredProjects(supabase)
+  const projects = await getUniqueProjects(supabase)
   const projectDiag =
     projects.length === 0 ? await getProjectSyncDiagnostic(user.id) : null
 
+  if (projects.length === 1) {
+    redirect(`/dashboard/projects/${encodeURIComponent(projects[0].notion_page_id)}`)
+  }
+
   return (
     <div className="bg-white shadow rounded-lg p-6">
+      {isNotionAccessError && (
+        <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200">
+          <h3 className="font-semibold text-amber-900 mb-2">Notion integration access required</h3>
+          <p className="text-sm text-amber-800 mb-2">
+            The Contacten database is not shared with your Notion integration. In Notion: open{' '}
+            <strong>AD Contacten</strong> → <strong>•••</strong> → <strong>Add connections</strong> →
+            select your integration.
+          </p>
+          <p className="text-xs text-amber-700">Error: {syncResult.error}</p>
+        </div>
+      )}
       <div className="flex justify-between items-center mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
           <p className="text-sm text-gray-600 mt-1">Welcome, {user.email}</p>
-          <p className="text-sm text-gray-600">
-            You have access to {links!.length} contact
-            {links!.length === 1 ? '' : 's'}.
-          </p>
         </div>
         <form action={refreshAndRevalidate}>
           <button
@@ -127,7 +160,7 @@ user_entity_link: ${diag.userEntityLinkCount} rows`}
 
       <div className="mt-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-3">Projects</h3>
-        <ProjectTable projects={projects} />
+        <ProjectList projects={projects} />
         {projectDiag && (
           <details className="mt-4 rounded border border-gray-200 p-3 text-sm">
             <summary className="cursor-pointer font-medium text-gray-700">

@@ -5,6 +5,7 @@
  */
 
 export const CUSTOMER_COLUMNS = [
+  'title',
   'status',
   'adres1',
   'adres2',
@@ -13,6 +14,7 @@ export const CUSTOMER_COLUMNS = [
 ] as const
 
 export const CONTRACTOR_COLUMNS = [
+  'title',
   'status',
   'adres1',
   'adres2',

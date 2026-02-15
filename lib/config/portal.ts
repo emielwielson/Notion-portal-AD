@@ -13,5 +13,6 @@ export async function getPortalConfig() {
     contactenProDbId: process.env.CONTACTEN_PRO_DB_ID?.trim() || data?.contacten_pro_db_id || '',
     emailPropertyName: data?.email_property_name || process.env.EMAIL_PROPERTY_NAME || 'Email',
     projectenPropertyName: process.env.PROJECTEN_PROPERTY_NAME?.trim() || data?.projecten_property_name || 'projecten',
+    projectTitlePropertyName: process.env.PROJECT_TITLE_PROPERTY_NAME?.trim() || 'Naam',
   }
 }
