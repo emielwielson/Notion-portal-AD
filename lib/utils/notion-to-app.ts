@@ -31,21 +31,27 @@ export type ProjectPropertyIds = {
   factuurBetaald?: string | null
 }
 
-function extractStringFromProperty(prop: NotionProperty | undefined): string | undefined {
-  if (!prop) return undefined
-  switch (prop.type) {
+function extractStringFromProperty(prop: NotionProperty | Record<string, unknown> | undefined): string | undefined {
+  if (!prop || typeof prop !== 'object') return undefined
+  const p = prop as Record<string, unknown>
+  switch (p.type) {
     case 'title':
-      return prop.title?.map((t) => t.plain_text).join(' ') || undefined
+      return Array.isArray(p.title)
+        ? (p.title as { plain_text?: string }[]).map((t) => t.plain_text ?? '').join(' ').trim() || undefined
+        : undefined
     case 'rich_text':
-      return prop.rich_text?.map((t) => t.plain_text).join(' ') || undefined
+      return Array.isArray(p.rich_text)
+        ? (p.rich_text as { plain_text?: string }[]).map((t) => t.plain_text ?? '').join(' ').trim() || undefined
+        : undefined
     case 'select':
-      return prop.select?.name ?? undefined
+      return (p.select as { name?: string })?.name ?? undefined
     case 'status':
-      return prop.status?.name ?? undefined
+      return (p.status as { name?: string })?.name ?? undefined
     case 'url':
-      return prop.url ?? undefined
+    case 'email':
+      return typeof p.url === 'string' ? p.url : typeof p.email === 'string' ? (p as { email: string }).email : undefined
     case 'number':
-      return prop.number != null ? String(prop.number) : undefined
+      return p.number != null ? String(p.number) : undefined
     default:
       return undefined
   }
@@ -65,6 +71,36 @@ function extractBoolFromProperty(prop: NotionProperty | undefined): boolean | un
   }
 }
 
+function getProp(props: Record<string, unknown>, id: string | null | undefined): unknown {
+  if (!id) return undefined
+  if (props[id]) return props[id]
+  try {
+    const decoded = decodeURIComponent(id)
+    if (decoded !== id && props[decoded]) return props[decoded]
+  } catch {
+    /* ignore */
+  }
+  for (const [key, val] of Object.entries(props)) {
+    try {
+      if (decodeURIComponent(key) === id || key === id) return val
+    } catch {
+      /* ignore */
+    }
+  }
+  return undefined
+}
+
+/** Fallback: try property by name (keys might be names in some API responses) */
+function getByKeyOrName(props: Record<string, unknown>, keysToTry: string[]): unknown {
+  for (const k of keysToTry) {
+    if (props[k]) return props[k]
+  }
+  for (const key of Object.keys(props)) {
+    if (keysToTry.some((k) => key.toLowerCase() === k.toLowerCase())) return props[key]
+  }
+  return undefined
+}
+
 /**
  * Normalize a Notion project page to AppProject.
  * Uses propertyIds to look up values (resolved from project database schema).
@@ -75,8 +111,9 @@ export function notionToAppProject(
   contactType: 'customer' | 'contractor',
   propertyIds: ProjectPropertyIds
 ): AppProject {
-  const props = notionPage.properties
-  const get = (id: string | null | undefined) => (id ? props[id] : undefined)
+  const props = notionPage.properties as Record<string, unknown>
+
+  const get = (id: string | null | undefined) => getProp(props, id) as NotionProperty | undefined
 
   const result: AppProject = {
     notionPageId: notionPage.id,
@@ -84,28 +121,39 @@ export function notionToAppProject(
     contactType,
   }
 
-  if (propertyIds.status) {
-    result.status = extractStringFromProperty(get(propertyIds.status))
+  result.status =
+    extractStringFromProperty(get(propertyIds.status)) ??
+    extractStringFromProperty(getByKeyOrName(props, ['Status', 'status']) as NotionProperty)
+
+  result.adres1 =
+    extractStringFromProperty(get(propertyIds.adres1)) ??
+    extractStringFromProperty(getByKeyOrName(props, ['Adres 1', 'adres1', 'Adres1']) as NotionProperty)
+
+  result.adres2 =
+    extractStringFromProperty(get(propertyIds.adres2)) ??
+    extractStringFromProperty(getByKeyOrName(props, ['Adres 2', 'adres2', 'Adres2']) as NotionProperty)
+
+  result.type =
+    extractStringFromProperty(get(propertyIds.type)) ??
+    extractStringFromProperty(getByKeyOrName(props, ['Type', 'type']) as NotionProperty)
+
+  const meetingVal = get(propertyIds.meeting) ?? getByKeyOrName(props, ['Meeting', 'meeting'])
+  result.meeting = extractStringFromProperty(meetingVal as NotionProperty)
+
+  const coVal = get(propertyIds.contractOndertekend) ?? getByKeyOrName(props, ['Contract ondertekend', 'contract ondertekend'])
+  if (coVal) {
+    result.contractOndertekend =
+      (coVal as { type?: string }).type === 'checkbox'
+        ? extractBoolFromProperty(coVal as NotionProperty)
+        : extractStringFromProperty(coVal as NotionProperty)
   }
-  if (propertyIds.adres1) {
-    result.adres1 = extractStringFromProperty(get(propertyIds.adres1))
-  }
-  if (propertyIds.adres2) {
-    result.adres2 = extractStringFromProperty(get(propertyIds.adres2))
-  }
-  if (propertyIds.type) {
-    result.type = extractStringFromProperty(get(propertyIds.type))
-  }
-  if (propertyIds.meeting) {
-    result.meeting = extractStringFromProperty(get(propertyIds.meeting))
-  }
-  if (propertyIds.contractOndertekend) {
-    const val = get(propertyIds.contractOndertekend)
-    result.contractOndertekend = val?.type === 'checkbox' ? extractBoolFromProperty(val) : extractStringFromProperty(val)
-  }
-  if (propertyIds.factuurBetaald) {
-    const val = get(propertyIds.factuurBetaald)
-    result.factuurBetaald = val?.type === 'checkbox' ? extractBoolFromProperty(val) : extractStringFromProperty(val)
+
+  const fbVal = get(propertyIds.factuurBetaald) ?? getByKeyOrName(props, ['Factuur betaald', 'factuur betaald'])
+  if (fbVal) {
+    result.factuurBetaald =
+      (fbVal as { type?: string }).type === 'checkbox'
+        ? extractBoolFromProperty(fbVal as NotionProperty)
+        : extractStringFromProperty(fbVal as NotionProperty)
   }
 
   return result

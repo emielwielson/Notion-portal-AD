@@ -43,22 +43,27 @@ export function setDataSourceOverride(databaseId: string, dataSourceId: string |
 }
 
 export async function getDataSourceIdFromDatabase(databaseId: string): Promise<string> {
+  const client = getClient()
+  const normalizedId = normalizeNotionId(databaseId)
+
+  try {
+    const database = await client.databases.retrieve({ database_id: normalizedId })
+    const dataSources = (database as any).data_sources
+    if (Array.isArray(dataSources) && dataSources.length > 0) {
+      return dataSources[0].id
+    }
+    if ((database as any).data_source_id) {
+      return (database as any).data_source_id
+    }
+  } catch {
+    /* databases.retrieve may fail for linked views */
+  }
+
   const override = getDataSourceOverride(databaseId)
   if (override) return override
 
-  const client = getClient()
-  const normalizedId = normalizeNotionId(databaseId)
-  const database = await client.databases.retrieve({ database_id: normalizedId })
-  const dataSources = (database as any).data_sources
-
-  if (Array.isArray(dataSources) && dataSources.length > 0) {
-    return dataSources[0].id
-  }
-  if ((database as any).data_source_id) {
-    return (database as any).data_source_id
-  }
   throw new Error(
-    `No data source for database ${normalizedId}. Set CONTACTEN_DATA_SOURCE_ID / CONTACTEN_PRO_DATA_SOURCE_ID in .env.local (from Notion → ••• → Manage data sources → Copy data source ID).`
+    `No data source for database ${normalizedId}. Share the database with your integration and ensure CONTACTEN_DATA_SOURCE_ID / CONTACTEN_PRO_DATA_SOURCE_ID are set in .env.local (from Notion → ••• → Manage data sources → Copy data source ID).`
   )
 }
 
@@ -101,6 +106,18 @@ export async function getPage(pageId: string): Promise<NotionPage> {
   return response as NotionPage
 }
 
+export async function getDataSourcePropertyNames(dataSourceId: string): Promise<string[]> {
+  const client = getClient()
+  const dataSource = await (client as any).dataSources.retrieve({
+    data_source_id: dataSourceId,
+  })
+  const props = dataSource?.properties
+  if (!props || typeof props !== 'object') return []
+  return Object.values(props)
+    .map((d: any) => d?.name)
+    .filter(Boolean)
+}
+
 export async function getPropertyIdByName(
   databaseId: string,
   propertyName: string
@@ -115,9 +132,10 @@ export async function getPropertyIdByName(
   const props = dataSource?.properties
   if (!props) return null
 
-  for (const [id, def] of Object.entries(props)) {
-    if ((def as any).name?.toLowerCase() === propertyName.toLowerCase()) {
-      return id
+  for (const [key, def] of Object.entries(props)) {
+    const d = def as { id?: string; name?: string }
+    if (d.name?.toLowerCase() === propertyName.toLowerCase()) {
+      return d.id || key || null
     }
   }
   return null

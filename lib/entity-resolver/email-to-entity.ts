@@ -32,10 +32,35 @@ export async function refreshEntityEmailMapping(): Promise<{ count: number; erro
     )
 
     const admin = createAdminClient()
-    let totalCount = 0
 
-    const contactenEmailId = await getPropertyIdByName(config.contactenDbId, config.emailPropertyName)
-    const contactenProEmailId = await getPropertyIdByName(config.contactenProDbId, config.emailPropertyName)
+    const EMAIL_PROPERTY_FALLBACKS = [
+      config.emailPropertyName,
+      'Email',
+      'E-mail',
+      'E-mailadres',
+      'email',
+    ]
+    const rawEnvId = process.env.EMAIL_PROPERTY_ID?.trim()
+    const envPropertyId = rawEnvId
+      ? (() => {
+          try {
+            return decodeURIComponent(rawEnvId)
+          } catch {
+            return rawEnvId
+          }
+        })()
+      : null
+    const getEmailPropertyId = async (dbId: string) => {
+      if (envPropertyId) return envPropertyId
+      for (const name of EMAIL_PROPERTY_FALLBACKS) {
+        const id = await getPropertyIdByName(dbId, name)
+        if (id) return id
+      }
+      return null
+    }
+
+    const contactenEmailId = await getEmailPropertyId(config.contactenDbId)
+    const contactenProEmailId = await getEmailPropertyId(config.contactenProDbId)
 
     const [customerPages, contractorPages] = await Promise.all([
       queryDatabase(config.contactenDbId),
@@ -120,6 +145,137 @@ export async function refreshUserEntityLink(
   } catch (err: any) {
     console.error('[Entity Resolver] refreshUserEntityLink error:', err)
     return { count: 0, error: err.message || 'Failed to refresh user entity link' }
+  }
+}
+
+export type AccessDiagnostic = {
+  customerPagesCount: number
+  contractorPagesCount: number
+  contactenDataSourceId: string | null
+  contactenProDataSourceId: string | null
+  emailPropertyIdUsed: string | null
+  mappingsCount: number
+  userEmailInMappings: boolean
+  entityMappingCount: number
+  userEntityLinkCount: number
+  error?: string
+}
+
+/**
+ * Run diagnostic to debug "No Access" - fetches from Notion, checks DB state.
+ */
+export async function getAccessDiagnostics(
+  userId: string,
+  userEmail: string
+): Promise<AccessDiagnostic> {
+  const empty: AccessDiagnostic = {
+    customerPagesCount: 0,
+    contractorPagesCount: 0,
+    contactenDataSourceId: null,
+    contactenProDataSourceId: null,
+    emailPropertyIdUsed: null,
+    mappingsCount: 0,
+    userEmailInMappings: false,
+    entityMappingCount: 0,
+    userEntityLinkCount: 0,
+  }
+  try {
+    const config = await getPortalConfig()
+    if (!config.contactenDbId || !config.contactenProDbId) {
+      return { ...empty, error: 'Missing Contacten database IDs' }
+    }
+
+    setDataSourceOverride(
+      config.contactenDbId,
+      process.env.CONTACTEN_DATA_SOURCE_ID?.trim()
+    )
+    setDataSourceOverride(
+      config.contactenProDbId,
+      process.env.CONTACTEN_PRO_DATA_SOURCE_ID?.trim()
+    )
+
+    const rawEnvId = process.env.EMAIL_PROPERTY_ID?.trim()
+    const envPropertyId = rawEnvId
+      ? (() => {
+          try {
+            return decodeURIComponent(rawEnvId)
+          } catch {
+            return rawEnvId
+          }
+        })()
+      : null
+
+    const getEmailPropertyId = async (dbId: string) => {
+      if (envPropertyId) return envPropertyId
+      const names = [config.emailPropertyName, 'E-mail', 'Email']
+      for (const name of names) {
+        const id = await getPropertyIdByName(dbId, name)
+        if (id) return id
+      }
+      return null
+    }
+
+    const contactenEmailId = await getEmailPropertyId(config.contactenDbId)
+
+    const { getDataSourceIdFromDatabase } = await import('@/lib/notion/client')
+    let contactenDataSourceId: string | null = null
+    let contactenProDataSourceId: string | null = null
+    try {
+      contactenDataSourceId = await getDataSourceIdFromDatabase(config.contactenDbId)
+    } catch {
+      /* ignore */
+    }
+    try {
+      contactenProDataSourceId = await getDataSourceIdFromDatabase(config.contactenProDbId)
+    } catch {
+      /* ignore */
+    }
+
+    const [customerPages, contractorPages] = await Promise.all([
+      queryDatabase(config.contactenDbId),
+      queryDatabase(config.contactenProDbId),
+    ])
+
+    const mappings: { email: string }[] = []
+    for (const page of customerPages) {
+      const emails = extractEmailsFromPage(page, contactenEmailId)
+      for (const e of emails) {
+        mappings.push({ email: e })
+      }
+    }
+    for (const page of contractorPages) {
+      const emails = extractEmailsFromPage(page, contactenEmailId)
+      for (const e of emails) {
+        mappings.push({ email: e })
+      }
+    }
+
+    const normalizedUserEmail = userEmail.toLowerCase().trim()
+    const userEmailInMappings = mappings.some((m) => m.email.toLowerCase() === normalizedUserEmail)
+
+    const admin = createAdminClient()
+    const { count: entityMappingCount } = await admin
+      .from('entity_email_mapping')
+      .select('*', { count: 'exact', head: true })
+
+    const { count: userEntityLinkCount } = await admin
+      .from('user_entity_link')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+
+    return {
+      customerPagesCount: customerPages.length,
+      contractorPagesCount: contractorPages.length,
+      contactenDataSourceId,
+      contactenProDataSourceId,
+      emailPropertyIdUsed: contactenEmailId,
+      mappingsCount: mappings.length,
+      userEmailInMappings,
+      entityMappingCount: entityMappingCount ?? 0,
+      userEntityLinkCount: userEntityLinkCount ?? 0,
+    }
+  } catch (err: any) {
+    return { ...empty, error: err?.message || String(err) }
   }
 }
 
