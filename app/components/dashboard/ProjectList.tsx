@@ -12,6 +12,13 @@ function formatValue(key: string, value: unknown): React.ReactNode {
     return <MeetingLink url={typeof value === 'string' ? value : undefined} />
   }
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'object' && value !== null && 'place' in value) {
+    const place = (value as { place?: { address?: string; name?: string } }).place
+    if (place && typeof place === 'object') {
+      const addr = place.address ?? place.name
+      if (typeof addr === 'string') return addr
+    }
+  }
   return String(value)
 }
 

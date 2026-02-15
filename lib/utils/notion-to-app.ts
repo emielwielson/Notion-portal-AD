@@ -55,6 +55,11 @@ function extractStringFromProperty(prop: NotionProperty | Record<string, unknown
   if (!prop || typeof prop !== 'object') return undefined
   const p = prop as Record<string, unknown>
   if (Array.isArray(p.title)) return extractTextFromRichTextArray(p.title) || undefined
+  if (p.place && typeof p.place === 'object') {
+    const place = p.place as Record<string, unknown>
+    const addr = place.address ?? place.name
+    if (typeof addr === 'string') return addr
+  }
   switch (p.type) {
     case 'title':
       if (Array.isArray(p.title)) return extractTextFromRichTextArray(p.title) || undefined
@@ -71,6 +76,10 @@ function extractStringFromProperty(prop: NotionProperty | Record<string, unknown
       return typeof p.url === 'string' ? p.url : typeof p.email === 'string' ? (p as { email: string }).email : undefined
     case 'number':
       return p.number != null ? String(p.number) : undefined
+    case 'place': {
+      const place = p.place as { address?: string; name?: string } | undefined
+      return place?.address ?? place?.name ?? undefined
+    }
     default:
       return undefined
   }
@@ -178,12 +187,12 @@ export function notionToAppProject(
     extractStringFromProperty(getByKeyOrName(props, ['Status', 'status']) as NotionProperty)
 
   result.adres1 =
-    extractStringFromProperty(get(propertyIds.adres1)) ??
-    extractStringFromProperty(getByKeyOrName(props, ['Adres 1', 'adres1', 'Adres1']) as NotionProperty)
+    extractStringFromProperty(getByKeyOrName(props, ['Adres 1', 'adres1', 'Adres1']) as NotionProperty) ??
+    extractStringFromProperty(get(propertyIds.adres1))
 
   result.adres2 =
-    extractStringFromProperty(get(propertyIds.adres2)) ??
-    extractStringFromProperty(getByKeyOrName(props, ['Adres 2', 'adres2', 'Adres2']) as NotionProperty)
+    extractStringFromProperty(getByKeyOrName(props, ['Adres 2', 'adres2', 'Adres2']) as NotionProperty) ??
+    extractStringFromProperty(get(propertyIds.adres2))
 
   result.type =
     extractStringFromProperty(get(propertyIds.type)) ??

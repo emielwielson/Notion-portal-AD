@@ -1,14 +1,20 @@
+import { unstable_noStore } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
 import { getCurrentUser } from '@/app/actions/auth'
-import { runSync, refreshAndRevalidate } from '@/app/actions/sync'
+import { runSync } from '@/app/actions/sync'
 import { signOut } from '@/app/actions/auth'
 import { getUniqueProjects, hasFreshCache } from '@/lib/permissions/data'
 import { ProjectList } from '@/app/components/dashboard/ProjectList'
 import { getAccessDiagnostics } from '@/lib/entity-resolver/email-to-entity'
 import { getProjectSyncDiagnostic } from '@/lib/sync/sync'
 
-export default async function DashboardPage() {
+type PageProps = { searchParams: Promise<{ refresh?: string }> }
+
+export default async function DashboardPage({ searchParams }: PageProps) {
+  unstable_noStore()
   const user = await getCurrentUser()
 
   if (!user) {
@@ -37,8 +43,11 @@ export default async function DashboardPage() {
     .select('entity_type, entity_notion_id')
     .eq('user_id', user.id)
 
+  const params = await searchParams
+  const forceRefresh = params.refresh === '1'
+
   const shouldSync =
-    !linksPre?.length || !(await hasFreshCache(supabase))
+    forceRefresh || !linksPre?.length || !(await hasFreshCache(supabase))
   const syncResult = shouldSync ? await runSync() : { success: true }
 
   const isNotionAccessError =
@@ -101,14 +110,12 @@ user_entity_link: ${diag.userEntityLinkCount} rows`}
         </details>
 
         <div className="flex gap-4">
-          <form action={refreshAndRevalidate}>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700"
-            >
-              Refresh
-            </button>
-          </form>
+          <a
+            href="/dashboard?refresh=1"
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 inline-block"
+          >
+            Refresh (force sync)
+          </a>
           <form action={signOut}>
             <button
               type="submit"
@@ -148,14 +155,12 @@ user_entity_link: ${diag.userEntityLinkCount} rows`}
           <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
           <p className="text-sm text-gray-600 mt-1">Welcome, {user.email}</p>
         </div>
-        <form action={refreshAndRevalidate}>
-          <button
-            type="submit"
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            Refresh
-          </button>
-        </form>
+        <a
+          href="/dashboard?refresh=1"
+          className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 inline-block"
+        >
+          Refresh (force sync)
+        </a>
       </div>
 
       <div className="mt-6">
