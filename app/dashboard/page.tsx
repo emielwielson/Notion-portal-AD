@@ -1,10 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/app/actions/auth'
-import {
-  refreshEntityEmailMapping,
-  refreshUserEntityLink,
-} from '@/lib/entity-resolver/email-to-entity'
+import { runSync, refreshAndRevalidate } from '@/app/actions/sync'
 import { signOut } from '@/app/actions/auth'
 
 export default async function DashboardPage() {
@@ -30,8 +27,7 @@ export default async function DashboardPage() {
     )
   }
 
-  await refreshEntityEmailMapping()
-  await refreshUserEntityLink(user.id, user.email)
+  await runSync()
 
   const supabase = await createClient()
   const { data: links } = await supabase
@@ -61,17 +57,68 @@ export default async function DashboardPage() {
     )
   }
 
+  const { data: projects } = await supabase
+    .from('notion_sync_cache')
+    .select('contact_notion_id, notion_page_id, contact_type, properties_json')
+    .order('last_synced_at', { ascending: false })
+
   return (
     <div className="bg-white shadow rounded-lg p-6">
-      <h2 className="text-2xl font-bold text-gray-900 mb-4">Dashboard</h2>
-      <p className="text-sm text-gray-600 mb-2">Welcome, {user.email}</p>
-      <p className="text-sm text-gray-600">
-        You have access to {links!.length} contact
-        {links!.length === 1 ? '' : 's'}.
-      </p>
-      <p className="text-sm text-gray-500 mt-4">
-        Projects will appear here (Task 4).
-      </p>
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+          <p className="text-sm text-gray-600 mt-1">Welcome, {user.email}</p>
+          <p className="text-sm text-gray-600">
+            You have access to {links!.length} contact
+            {links!.length === 1 ? '' : 's'}.
+          </p>
+        </div>
+        <form action={refreshAndRevalidate}>
+          <button
+            type="submit"
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            Refresh
+          </button>
+        </form>
+      </div>
+
+      <div className="mt-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">Projects</h3>
+        {!projects || projects.length === 0 ? (
+          <p className="text-gray-500">No projects found.</p>
+        ) : (
+          <ul className="divide-y divide-gray-200">
+            {projects.map((p) => {
+              const props = (p.properties_json || {}) as Record<string, unknown>
+              const title =
+                (props.adres1 as string) ||
+                (props.status as string) ||
+                p.notion_page_id
+              return (
+                <li key={`${p.contact_notion_id}-${p.contact_type}-${p.notion_page_id}`} className="py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">
+                        {title}
+                      </span>
+                      <span
+                        className={`ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          p.contact_type === 'customer'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}
+                      >
+                        {p.contact_type}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }

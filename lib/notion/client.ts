@@ -74,11 +74,12 @@ export async function queryDatabase(
 
   do {
     try {
-      const response = await (client as any).dataSources.query({
+      const resp = await (client as any).dataSources.query({
         data_source_id: dataSourceId,
         filter: filter ?? undefined,
         start_cursor: cursor,
       })
+      const response = resp as { results?: NotionPage[]; next_cursor?: string }
       pages.push(...(response.results || []))
       cursor = response.next_cursor ?? undefined
       if (cursor) await new Promise((r) => setTimeout(r, 350))

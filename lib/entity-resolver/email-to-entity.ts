@@ -5,28 +5,12 @@ import {
   getPropertyIdByName,
   setDataSourceOverride,
 } from '@/lib/notion/client'
+import { getPortalConfig } from '@/lib/config/portal'
 import { extractEmailsFromPage } from './extract-emails'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import type { EntityType } from '@/types/database'
 
 export type UserEntity = { entityType: EntityType; entityNotionId: string }
-
-/**
- * Fetch portal config from Supabase or use env fallbacks
- * Env vars (CONTACTEN_DB_ID, CONTACTEN_PRO_DB_ID) take precedence over portal_config
- * so .env.local always wins for local development.
- */
-async function getPortalConfig() {
-  const supabase = await createClient()
-  const { data } = await supabase.from('portal_config').select('*').limit(1).single()
-
-  return {
-    contactenDbId: process.env.CONTACTEN_DB_ID?.trim() || data?.contacten_db_id || '',
-    contactenProDbId: process.env.CONTACTEN_PRO_DB_ID?.trim() || data?.contacten_pro_db_id || '',
-    emailPropertyName: data?.email_property_name || process.env.EMAIL_PROPERTY_NAME || 'Email',
-  }
-}
 
 /**
  * Refresh entity_email_mapping from Notion Contacten and Contacten (pro)
