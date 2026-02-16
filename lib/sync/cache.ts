@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { EntityType, Json } from '@/types/database'
 
 /**
+ * @deprecated Use mirror-sync.ts and notion_projects/notion_contact_project instead.
  * Upsert a project into notion_sync_cache.
  * Uses on conflict to update last_synced_at and properties_json when row exists.
  */

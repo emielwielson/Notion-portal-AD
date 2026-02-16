@@ -25,6 +25,7 @@ Apply migrations in the following order:
 3. `003_notion_sync_cache.sql` - Creates notion_sync_cache table
 4. `004_user_entity_link.sql` - Creates user_entity_link table
 5. `005_rls_policies.sql` - Enables Row Level Security and creates policies
+6. `006_notion_mirror_tables.sql` - Creates notion_contacts, notion_projects, notion_contact_project (mirror for webhooks)
 
 ### Steps to Apply Migrations
 
@@ -63,6 +64,10 @@ Apply migrations in the following order:
 - `user_can_access_entity()` helper function
 - Policies restrict access by user's linked entities
 
+**006_notion_mirror_tables.sql**
+- `notion_contacts`, `notion_projects`, `notion_contact_project` tables
+- RLS policies for mirror tables
+
 ## Verification
 
 ### 1. Check Tables
@@ -73,6 +78,9 @@ Apply migrations in the following order:
    - `entity_email_mapping`
    - `notion_sync_cache`
    - `user_entity_link`
+   - `notion_contacts`
+   - `notion_projects`
+   - `notion_contact_project`
 
 ### 2. Update Portal Config
 

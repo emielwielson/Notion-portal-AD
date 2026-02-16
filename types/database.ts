@@ -139,6 +139,78 @@ export type Database = {
           }
         ]
       }
+      notion_contacts: {
+        Row: {
+          notion_page_id: string
+          source_db: 'contacten' | 'contacten_pro'
+          properties_json: Json
+          last_synced_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          notion_page_id: string
+          source_db: 'contacten' | 'contacten_pro'
+          properties_json?: Json
+          last_synced_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          notion_page_id?: string
+          source_db?: 'contacten' | 'contacten_pro'
+          properties_json?: Json
+          last_synced_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notion_projects: {
+        Row: {
+          notion_page_id: string
+          properties_json: Json
+          last_synced_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          notion_page_id: string
+          properties_json?: Json
+          last_synced_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          notion_page_id?: string
+          properties_json?: Json
+          last_synced_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notion_contact_project: {
+        Row: {
+          contact_notion_id: string
+          contact_type: 'customer' | 'contractor'
+          project_notion_id: string
+          created_at: string
+        }
+        Insert: {
+          contact_notion_id: string
+          contact_type: 'customer' | 'contractor'
+          project_notion_id: string
+          created_at?: string
+        }
+        Update: {
+          contact_notion_id?: string
+          contact_type?: 'customer' | 'contractor'
+          project_notion_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -171,6 +243,13 @@ export type NotionSyncCacheUpdate = Database['public']['Tables']['notion_sync_ca
 export type UserEntityLink = Database['public']['Tables']['user_entity_link']['Row']
 export type UserEntityLinkInsert = Database['public']['Tables']['user_entity_link']['Insert']
 export type UserEntityLinkUpdate = Database['public']['Tables']['user_entity_link']['Update']
+
+export type NotionContact = Database['public']['Tables']['notion_contacts']['Row']
+export type NotionContactInsert = Database['public']['Tables']['notion_contacts']['Insert']
+export type NotionProject = Database['public']['Tables']['notion_projects']['Row']
+export type NotionProjectInsert = Database['public']['Tables']['notion_projects']['Insert']
+export type NotionContactProject = Database['public']['Tables']['notion_contact_project']['Row']
+export type NotionContactProjectInsert = Database['public']['Tables']['notion_contact_project']['Insert']
 
 // Entity type for use in app code
 export type EntityType = 'customer' | 'contractor'

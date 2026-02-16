@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  const publicRoutes = ['/', '/login', '/api/auth/callback']
+  const publicRoutes = ['/', '/login', '/api/auth/callback', '/api/notion/webhook']
   const isPublicRoute = publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(route)
   )
@@ -33,6 +33,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Exclude webhook so it bypasses middleware entirely (Notion verification)
+    '/((?!_next/static|_next/image|favicon.ico|api/notion/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

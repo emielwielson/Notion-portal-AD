@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { syncProjects } from '@/lib/sync/sync'
+import { syncMirror } from '@/lib/sync/mirror-sync'
 
 export async function runSync(): Promise<{ success: boolean; projectsSynced?: number; error?: string }> {
   const supabase = await createClient()
@@ -14,7 +14,12 @@ export async function runSync(): Promise<{ success: boolean; projectsSynced?: nu
     return { success: false, error: 'Not authenticated' }
   }
 
-  return syncProjects(user.id, user.email)
+  const result = await syncMirror(user.id, user.email)
+  return {
+    success: result.success,
+    projectsSynced: result.projectsSynced,
+    error: result.error,
+  }
 }
 
 /**

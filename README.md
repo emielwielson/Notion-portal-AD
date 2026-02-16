@@ -29,6 +29,16 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Notion Webhooks
+
+After deployment, configure webhooks in **Notion Integration → Webhooks**:
+
+1. Create subscription → URL: `https://<your-domain>/api/notion/webhook`
+2. Subscribe to: `page.properties_updated`, `page.deleted`, `page.created`, `page.undeleted`, `data_source.content_updated`
+3. When Notion sends the verification token, paste it in the Notion UI to activate
+
+Data stays in sync when Notion pages change; no sync runs on dashboard load.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.

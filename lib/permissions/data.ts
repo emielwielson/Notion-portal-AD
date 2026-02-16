@@ -16,30 +16,54 @@ export type UniqueProject = {
 }
 
 /**
- * Fetch projects from notion_sync_cache and apply column filtering per row.
- * RLS restricts rows to user's entities; this filters properties by contact_type.
+ * Fetch projects from notion_contact_project + notion_projects.
+ * RLS restricts notion_contact_project to user's entities.
  */
 export async function getFilteredProjects(
   supabase: SupabaseClient<Database>
 ): Promise<FilteredProject[]> {
-  const { data: rows, error } = await supabase
-    .from('notion_sync_cache')
-    .select('contact_notion_id, notion_page_id, contact_type, properties_json')
-    .order('last_synced_at', { ascending: false })
+  const { data: relationRows, error: relError } = await supabase
+    .from('notion_contact_project')
+    .select('contact_notion_id, contact_type, project_notion_id')
 
-  if (error) {
-    throw new Error(`Failed to fetch projects: ${error.message}`)
+  if (relError) {
+    throw new Error(`Failed to fetch project relations: ${relError.message}`)
   }
 
-  const projects: FilteredProject[] = (rows || []).map((row) => ({
-    contact_notion_id: row.contact_notion_id,
-    notion_page_id: row.notion_page_id,
-    contact_type: row.contact_type,
-    properties: filterProjectProperties(
-      (row.properties_json || {}) as Record<string, unknown>,
-      row.contact_type
-    ),
-  }))
+  if (!relationRows?.length) {
+    return []
+  }
+
+  const projectIds = [...new Set(relationRows.map((r) => r.project_notion_id))]
+
+  const { data: projectRows, error: projError } = await supabase
+    .from('notion_projects')
+    .select('notion_page_id, properties_json')
+    .in('notion_page_id', projectIds)
+
+  if (projError) {
+    throw new Error(`Failed to fetch projects: ${projError.message}`)
+  }
+
+  const projectMap = new Map(
+    (projectRows || []).map((p) => [
+      p.notion_page_id,
+      (p.properties_json || {}) as Record<string, unknown>,
+    ])
+  )
+
+  const projects: FilteredProject[] = []
+  for (const rel of relationRows) {
+    const props = projectMap.get(rel.project_notion_id)
+    if (!props) continue
+
+    projects.push({
+      contact_notion_id: rel.contact_notion_id,
+      notion_page_id: rel.project_notion_id,
+      contact_type: rel.contact_type,
+      properties: filterProjectProperties(props, rel.contact_type),
+    })
+  }
 
   return projects
 }
@@ -72,26 +96,6 @@ export async function getUniqueProjects(
     notion_page_id,
     properties,
   }))
-}
-
-const CACHE_FRESH_SECONDS = 5 * 60 // 5 minutes
-
-/**
- * Check if the user has fresh cached projects (skip Notion sync if so).
- */
-export async function hasFreshCache(
-  supabase: SupabaseClient<Database>
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('notion_sync_cache')
-    .select('last_synced_at')
-    .order('last_synced_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error || !data?.last_synced_at) return false
-  const last = new Date(data.last_synced_at).getTime()
-  return (Date.now() - last) / 1000 < CACHE_FRESH_SECONDS
 }
 
 /**
